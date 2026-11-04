@@ -1,0 +1,22 @@
+# 存档、备份、临时产物——绝不入库
+*.sav
+*.bak
+*.zip
+*.bin
+*.dll
+*.pdb
+pbz_work/
+backups/
+backup/
+slots/
+json/
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+node_modules/
