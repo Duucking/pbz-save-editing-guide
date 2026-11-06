@@ -387,9 +387,10 @@ music.解锁条件.完成第一个大榕树
 4. 完成态对照：
    - EventTag 同时有 `开启任务N`、`完成挑战N`、`music.解锁条件...`
    - `LevelActorManager[actor].LevelSequenceHasPlay == true`
-   - 通常有两个 `ExecuteNodeGuid[actorKey_<GUID>] == true`
+   - **必须有 2 个** `ExecuteNodeGuid[actorKey_<GUID>] == true`；只有 1 个时，地图挑战地点统计可能不勾
+5. 如果条件允许，拿一份**同版本、同挑战已完成的 100% 存档**做对照：同一个 actor 的 `ExecuteNodeGuid` 两个 GUID 是最可靠的来源。
 
-> `ExecuteNodeGuid` 的 GUID 是关卡事件图节点 ID，不在存档里生成。缺失时只能从关卡资产或其它完成档里找，**不要伪造**。
+> `ExecuteNodeGuid` 的 GUID 是关卡事件图节点 ID，不在存档里生成。缺失时只能从同版本完成档或关卡资产里找，**不要伪造**。
 
 ---
 
@@ -542,7 +543,7 @@ python pbz_decompress.py .\slots .\json
 | Oodle 解压返回 0/-1 | DLL 太老（如 oo2core_5）/ rawSize 错 / 块偏移错 | 换支持 Kraken 的 DLL；用目录 rawSize；检查 36 字节头 |
 | 游戏读档失败 | 目录 offset/size 没重排 / nonce 复用 / tag 顺序错 | 重跑 repack；确认 tag 在密文前 |
 | 改了没效果 | 改错槽 / 游戏读 1RealTime / Steam Cloud 覆盖 | 改 `LastContinueSlot` 指向的槽；同步最新 1RealTime；断云 |
-| 任务显示 N/5，但树图标仍“未完成” | 任务计数 ≠ 世界 actor 状态 | 补 `EventTag` + `LevelSequenceHasPlay`；可能还缺 `ExecuteNodeGuid` |
+| 任务显示 N/5，但树图标/挑战地点仍“未完成” | 任务计数 ≠ 世界 actor 状态 | 补 `EventTag` + `LevelSequenceHasPlay`；再检查 `ExecuteNodeGuid` 是否只有 1 个（见 §11） |
 | 任务整条显示完成 | 写了 `QC_Succeded` + `BranchCompleted` | 想保留后续内容就改回 `QC_Started` + `BranchActivating` |
 | 奖杯没弹 | 成就在 `__Achievements__` 槽，和任务槽分开 | 任务修改不会补发奖杯；需要另改成就槽（风险更高） |
 | 改完文件变大 | stored 块不压缩 | 正常；只改必要槽 |
@@ -550,7 +551,21 @@ python pbz_decompress.py .\slots .\json
 
 ### 关于 `ExecuteNodeGuid`
 
-完成的树通常有两个 `ExecuteNodeGuid` 为 `true`，未完成的只有“开启”那个。这个 GUID 是关卡事件图节点 ID，**不在存档里生成**；如果补了 EventTag 和 `LevelSequenceHasPlay` 仍不生效，需要从关卡资产/其他完成档里找缺失的第二个 GUID。不要随便伪造 GUID。
+完成的树通常有 **2 个** `ExecuteNodeGuid[actorKey_<GUID>] = true`，未完成的只有“开启”那个。这个 GUID 是关卡事件图节点 ID，**不在存档里生成**，也不能用随机 GUID 伪造——伪造的键不会让挑战统计生效。
+
+如果出现“任务已完成、EventTag 有完成挑战、LevelSequenceHasPlay 也是 true，但地图里的挑战地点仍少 1 个”，优先检查这棵树的 `ExecuteNodeGuid` 是不是只有 1 个。
+
+实测案例（榕树之心 / 后街树）：
+
+```text
+actorKey = PBZ_Houjie_WP-StaticMeshActor_UAID_E89C25A7512023B302_1167014368
+已有节点 = 9FD4BAA442F6DB4735C2D08667158F43
+缺失节点 = 0BC885C844F31670A925F2909DB9D94C
+```
+
+补上第二个真实节点后，庞镇“挑战地点”从 2/3 变为 3/3。
+
+缺失 GUID 的正确来源：**同版本、同挑战已完成的 100% 存档**，或从关卡资产/事件图里提取。不要从别的树复制，也不要自己编。
 
 ### 关于手动档
 
@@ -578,7 +593,7 @@ python pbz_decompress.py .\slots .\json
 2. 修改前把整个 <SteamID> 目录打包备份，记录原文件 SHA-256；不要动游戏目录以外的无关文件。
 3. 解出目标槽 JSON，找到目标任务的 Narrative.NarrativeSavedQuests 记录，先打印当前字段给我确认。
 4. 按我的要求改 TasksProgress / QuestCompletion / BranchType / CompletedBranches；不要动其它任务和槽。
-5. 如果任务涉及世界 actor（树/机关等），同时检查 EventPipeline.ComponentInfoJson[actor].EventTag 和 LevelActorManager[actor].LevelSequenceHasPlay；只改任务计数可能不够。
+5. 如果任务涉及世界 actor（树/机关等），同时检查 EventPipeline.ComponentInfoJson[actor].EventTag、LevelActorManager[actor].LevelSequenceHasPlay，以及 EventPipeline.ExecuteNodeGuid 里该 actor 的节点数量（完成态通常 2 个）；只改任务计数可能不够。
 6. 用 stored 块重打包，回读校验：GCM、tiling、解压、目标字段、其它槽 SHA 不变。
 7. 输出：修改前后 diff、备份路径、新文件 SHA-256、回滚步骤。
 8. 没有我的明确同意，不要直接覆盖游戏目录；先给我工作区里的成品文件。
@@ -630,10 +645,29 @@ python pbz_decompress.py .\slots .\json
 }
 ```
 
+### 最终修复：补第二个 ExecuteNodeGuid
+
+只补上面两项，任务和树 actor 都正常，但庞镇地图的“挑战地点”仍是 2/3。和同版本 100% 存档对比后发现，后街树的 `ExecuteNodeGuid` 只有 1 个，而正常完成态是 2 个：
+
+```text
+9FD4BAA442F6DB4735C2D08667158F43   ← 原档已有
+0BC885C844F31670A925F2909DB9D94C   ← 100% 存档里的第二个真实节点
+```
+
+补成：
+
+```json
+"PBZ_Houjie_WP-StaticMeshActor_UAID_E89C25A7512023B302_1167014368_0BC885C844F31670A925F2909DB9D94C": true
+```
+
+后，“挑战地点”从 2/3 变为 3/3。
+
+**不要用随机 GUID 代替**：本鲸试过合成 GUID，键存在但游戏不认，挑战统计仍然不勾。
+
 教训：
 
 1. **任务进度和世界 actor 状态是两套数据**，不要只改 `TasksProgress`。
-2. 完成态的树通常有两个 `ExecuteNodeGuid`；如果补完上面两项图标仍不消失，说明还缺第二个节点 GUID，需要从关卡资产/其它完成档里找。
+2. 完成态的树通常有 **2 个** `ExecuteNodeGuid`；如果某棵树只有 1 个，即使 EventTag 和 LevelSequenceHasPlay 都补了，地图挑战地点仍可能不勾。第二个 GUID 要从同版本 100% 存档/关卡资产里找，**合成 GUID 无效**。
 3. 改任务前先确认“第 N 位”到底对应哪个 actor：用历史档看第 N 位翻转时 `LevelActorManager` 新增了哪个 key。
 
 ---
